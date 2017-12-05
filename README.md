@@ -40,3 +40,8 @@ URxvt.textShadow : true
 URxvt.shadowColor: #555555
 ```
 
+Screenshot:
+-----------
+
+![Screenshot](shadows.png?raw=true "Screenshot")
+
