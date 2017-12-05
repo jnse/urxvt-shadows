@@ -1,0 +1,253 @@
+diff -r -u a/src/init.C b/src/init.C
+--- a/src/init.C	2017-12-05 09:56:07.697192418 -0600
++++ b/src/init.C	2017-12-05 09:57:27.313099438 -0600
+@@ -552,6 +552,7 @@
+ #endif /* ! NO_BOLD_UNDERLINE_REVERSE */
+ #if ENABLE_FRILLS
+     NULL,			// Color_underline
++    NULL,           // Color_shadow
+ #endif
+ #ifdef OPTION_HC
+     NULL,
+diff -r -u a/src/optinc.h b/src/optinc.h
+--- a/src/optinc.h	2017-12-05 09:56:07.697192418 -0600
++++ b/src/optinc.h	2017-12-05 09:57:53.470397394 -0600
+@@ -35,6 +35,7 @@
+  def(hold)       // hold window open after exit
+  def(override_redirect)
+  def(urgentOnBell)
++ def(textShadow)
+ #else
+  nodef(insecure)
+  nodef(borderLess)
+diff -r -u a/src/rsinc.h b/src/rsinc.h
+--- a/src/rsinc.h	2017-12-05 09:56:07.699192441 -0600
++++ b/src/rsinc.h	2017-12-05 09:58:12.193610657 -0600
+@@ -72,6 +72,7 @@
+   def (letterSpace)
+   def (cursorUnderline)
+   def (urgentOnBell)
++  def (textShadow)
+ #endif
+ #if BUILTIN_GLYPHS
+   def (skipBuiltinGlyphs)
+diff -u -r a/src/rxvtfont.C b/src/rxvtfont.C
+--- a/src/rxvtfont.C	2017-12-05 10:32:32.519116327 -0600
++++ b/src/rxvtfont.C	2017-12-05 10:33:10.998565053 -0600
+@@ -32,6 +32,7 @@
+ # include <fontconfig/fontconfig.h>
+ #endif
+ 
++#define ISSET_PIXCOLOR(idx)     (!!term->rs[Rs_color + (idx)])
+ #define MAX_OVERLAP_ROMAN  (8 + 2)	// max. character width in 8ths of the base width
+ #define MAX_OVERLAP_ITALIC (8 + 3)	// max. overlap for italic fonts
+ 
+@@ -1056,6 +1057,20 @@
+   v.foreground = term->pix_colors[fg];
+   v.font = f->fid;
+ 
++#if ENABLE_FRILLS
++  XGCValues shadow_v;
++  XRectangle clip_rect;
++  if(term->option(Opt_textShadow))
++    {
++      if (ISSET_PIXCOLOR (Color_shadow))
++        shadow_v.foreground = term->pix_colors[Color_shadow];
++      else
++        shadow_v.foreground = term->pix_colors[bg];
++      shadow_v.font = v.font;
++      clip_rect.x = clip_rect.y = 0;
++    }
++#endif
++
+   if (enc2b)
+     {
+       const XChar2b *xc = enc_xchar2b (text, len, cs, slow);
+@@ -1077,15 +1092,46 @@
+               do
+                 {
+                   if (xc->byte1 || xc->byte2)
++                  {
++ #ifdef ENABLE_FRILLS
++                    if(term->option(Opt_textShadow))
++                    {
++                        // set a clipping rectangle to clip shadows
++                        clip_rect.width = term->fwidth * len;
++                        clip_rect.height = term->fheight;
++                        XSetClipRectangles(disp, gc, x, y, &clip_rect, 1, Unsorted);
++                        XChangeGC (disp, gc, GCForeground | GCFont, &shadow_v);  // FIXME: could get rid of these extra calls
++                        XDrawString16 (disp, d, gc, x + 1, y + 1 + base, xc, 1);
++                        XChangeGC (disp, gc, GCForeground | GCFont, &v);
++                        XSetClipMask(disp, gc, None);
++                    }
++#endif 
++                      
+                     XDrawString16 (disp, d, gc, x, y + base, xc, 1);
+-
++                  }
+                   x += term->fwidth;
+                   xc++; len--;
+                 }
+               while (len);
+             }
+           else
++          {
++#ifdef ENABLE_FRILLS
++                    if(term->option(Opt_textShadow))
++                    {
++                        // set a clipping rectangle to clip shadows
++                        clip_rect.width = term->fwidth * len;
++                        clip_rect.height = term->fheight;
++                        XSetClipRectangles(disp, gc, x, y, &clip_rect, 1, Unsorted);
++                        XChangeGC (disp, gc, GCForeground | GCFont, &shadow_v);  // FIXME: could get rid of these extra calls
++                        XDrawString16 (disp, d, gc, x + 1, y + 1 + base, xc, len);
++                        XChangeGC (disp, gc, GCForeground | GCFont, &v);
++                        XSetClipMask(disp, gc, None);
++                    }
++#endif 
++ 
+             XDrawString16 (disp, d, gc, x, y + base, xc, len);
++          }
+         }
+     }
+   else
+@@ -1109,15 +1155,44 @@
+               do
+                 {
+                   if (*xc)
++                  {
++#ifdef ENABLE_FRILLS
++                    if(term->option(Opt_textShadow))
++                    {
++                        // set a clipping rectangle to clip shadows
++                        clip_rect.width = term->fwidth * len;
++                        clip_rect.height = term->fheight;
++                        XSetClipRectangles(disp, gc, x, y, &clip_rect, 1, Unsorted);
++                        XChangeGC (disp, gc, GCForeground | GCFont, &shadow_v);  // FIXME: could get rid of these extra calls
++                        XDrawString (disp, d, gc, x + 1, y + 1 + base, xc, 1);
++                        XChangeGC (disp, gc, GCForeground | GCFont, &v);
++                        XSetClipMask(disp, gc, None);
++                    }
++#endif 
+                     XDrawString (disp, d, gc, x, y + base, xc, 1);
+-
++                  }
+                   x += term->fwidth;
+                   xc++; len--;
+                 }
+               while (len);
+             }
+           else
++		    {
++#ifdef ENABLE_FRILLS
++              if(term->option(Opt_textShadow))
++              {
++                // set a clipping rectangle to clip shadows
++                clip_rect.width = term->fwidth * len;
++                clip_rect.height = term->fheight;
++                XSetClipRectangles(disp, gc, x, y, &clip_rect, 1, Unsorted);
++                XChangeGC (disp, gc, GCForeground | GCFont, &shadow_v);  // FIXME: could get rid of these extra calls
++                XDrawString (disp, d, gc, x + 1, y + 1 + base, xc, len);
++                XChangeGC (disp, gc, GCForeground | GCFont, &v);
++                XSetClipMask(disp, gc, None);
++              }
++#endif
+             XDrawString (disp, d, gc, x, y + base, xc, len);
++            }
+         }
+     }
+ }
+@@ -1361,8 +1436,27 @@
+                      int fg, int bg)
+ {
+   XGlyphInfo extents;
++
++#if ENABLE_FRILLS
++  XftGlyphSpec *enc;
++  XftGlyphSpec *ep;
++  XftGlyphSpec *enc_shadow;
++  XftGlyphSpec *ep_shadow; 
++  if(term->option(Opt_textShadow))
++  {
++    enc = rxvt_temp_buf<XftGlyphSpec> (len*2);
++    enc_shadow = enc + len;
++    ep_shadow = enc_shadow;
++  }
++  else
++  {
++    XftGlyphSpec *enc = rxvt_temp_buf<XftGlyphSpec> (len);
++  }
++  ep = enc;
++#else
+   XftGlyphSpec *enc = rxvt_temp_buf<XftGlyphSpec> (len);
+   XftGlyphSpec *ep = enc;
++#endif
+ 
+   dTermDisplay;
+   dTermGC;
+@@ -1400,6 +1494,17 @@
+           if (extents.xOff == 0)
+             ep->x = x_ + cwidth;
+ 
++#if ENABLE_FRILLS
++          if(term->option(Opt_textShadow))
++          {
++            ep_shadow->glyph = glyph;
++            ep_shadow->x = ep->x + 1;
++            ep_shadow->y = ep->y + 1;
++
++            ep_shadow++;
++          }
++#endif
++
+           ep++;
+         }
+ 
+@@ -1464,6 +1569,17 @@
+ #endif
+             XftDrawRect (d2, &term->pix_colors[bg >= 0 ? bg : Color_bg].c, 0, 0, w, h);
+ 
++
++#if ENABLE_FRILLS
++          if(term->option(Opt_textShadow))
++          {
++            if (ISSET_PIXCOLOR (Color_shadow))
++              XftDrawGlyphSpec (d2, &term->pix_colors[Color_shadow].c, f, enc_shadow, ep_shadow - enc_shadow);
++            else
++              XftDrawGlyphSpec (d2, &term->pix_colors[bg].c, f, enc_shadow, ep_shadow - enc_shadow);
++          }
++#endif
++
+           XftDrawGlyphSpec (d2, &term->pix_colors[fg].c, f, enc, ep - enc);
+           XCopyArea (disp, d2, d, gc, 0, 0, w, h, x, y);
+         }
+diff -r -u a/src/rxvt.h b/src/rxvt.h
+--- a/src/rxvt.h	2017-12-05 09:56:07.699192441 -0600
++++ b/src/rxvt.h	2017-12-05 09:58:26.779776792 -0600
+@@ -504,6 +504,7 @@
+ #endif
+ #if ENABLE_FRILLS
+   Color_underline,
++  Color_shadow,
+ #endif
+ #ifdef OPTION_HC
+   Color_HC,
+diff -r -u a/src/xdefaults.C b/src/xdefaults.C
+--- a/src/xdefaults.C	2017-12-05 09:56:07.714192612 -0600
++++ b/src/xdefaults.C	2017-12-05 10:06:11.886071298 -0600
+@@ -139,6 +139,7 @@
+               BOOL (Rs_tripleclickwords, "tripleclickwords", "tcw", Opt_tripleclickwords, 0, "triple click word selection"),
+               BOOL (Rs_insecure, "insecure", "insecure", Opt_insecure, 0, "enable possibly insecure escape sequences"),
+               BOOL (Rs_cursorUnderline, "cursorUnderline", "uc", Opt_cursorUnderline, 0, "underline cursor"),
++              BOOL (Rs_textShadow, "textShadow", "uc", Opt_textShadow, 0, "text shadow effect"),
+ #endif
+ #if CURSOR_BLINK
+               BOOL (Rs_cursorBlink, "cursorBlink", "bc", Opt_cursorBlink, 0, "blinking cursor"),
+@@ -172,6 +173,7 @@
+ #endif /* ! NO_BOLD_UNDERLINE_REVERSE */
+ #if ENABLE_FRILLS
+               RSTRG (Rs_color + Color_underline, "underlineColor", "color"),
++              RSTRG (Rs_color + Color_shadow, "shadowColor", "color"),
+ #endif
+               RSTRG (Rs_color + Color_scroll, "scrollColor", "color"),
+ #ifdef RXVT_SCROLLBAR
